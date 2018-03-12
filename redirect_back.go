@@ -10,15 +10,14 @@ import (
 
 	"github.com/qor/middlewares"
 	"github.com/qor/qor/utils"
-	"github.com/qor/session"
-	"github.com/qor/session/manager"
+	"github.com/qor/qor"
+	_ "github.com/qor/session/manager"
 )
 
 var returnToKey utils.ContextKey = "redirect_back_return_to"
 
 // Config redirect back config
 type Config struct {
-	SessionManager    session.ManagerInterface
 	FallbackPath      string
 	IgnoredPaths      []string
 	IgnoredPrefixes   []string
@@ -28,10 +27,6 @@ type Config struct {
 
 // New initialize redirect back instance
 func New(config *Config) *RedirectBack {
-	if config.SessionManager == nil {
-		config.SessionManager = manager.SessionManager
-	}
-
 	if config.FallbackPath == "" {
 		config.FallbackPath = "/"
 	}
@@ -129,13 +124,17 @@ func (redirectBack *RedirectBack) RedirectBack(w http.ResponseWriter, req *http.
 // Middleware returns a RedirectBack middleware instance that record return_to path
 func (redirectBack *RedirectBack) Middleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		returnTo := redirectBack.config.SessionManager.Get(req, "return_to")
+		qorctx := qor.ContextFromRequest(req)
+		returnTo := qorctx.SessionManager().Get("return_to")
 		req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
 
 		if !redirectBack.Ignore(req) && returnTo != req.URL.String() {
-			redirectBack.config.SessionManager.Add(w, req, "return_to", req.URL.String())
+			returnTo = req.URL.String()
+			if returnTo[0:1] == "/" {
+				returnTo = qorctx.GetTop().GenURL(returnTo)
+			}
+			qorctx.SessionManager().Add("return_to", returnTo)
 		}
-
 		handler.ServeHTTP(w, req)
 	})
 }
