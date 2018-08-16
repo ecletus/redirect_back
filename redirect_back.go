@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qor/middlewares"
-	"github.com/qor/qor/utils"
-	"github.com/qor/qor"
-	_ "github.com/qor/session/manager"
+	"github.com/moisespsena/go-route"
+	"github.com/aghape/aghape/utils"
+	"github.com/aghape/aghape"
+	_ "github.com/aghape/session/manager"
 )
 
 var returnToKey utils.ContextKey = "redirect_back_return_to"
@@ -37,15 +37,6 @@ func New(config *Config) *RedirectBack {
 
 	redirectBack := &RedirectBack{config: config}
 	redirectBack.compile()
-
-	middlewares.Use(middlewares.Middleware{
-		Name:        "redirect_back",
-		InsertAfter: []string{"session"},
-		Handler: func(handler http.Handler) http.Handler {
-			return redirectBack.Middleware(handler)
-		},
-	})
-
 	return redirectBack
 }
 
@@ -122,19 +113,22 @@ func (redirectBack *RedirectBack) RedirectBack(w http.ResponseWriter, req *http.
 }
 
 // Middleware returns a RedirectBack middleware instance that record return_to path
-func (redirectBack *RedirectBack) Middleware(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		qorctx := qor.ContextFromRequest(req)
-		returnTo := qorctx.SessionManager().Get("return_to")
-		req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
+func (redirectBack *RedirectBack) Middleware() *route.Middleware {
+	return &route.Middleware{
+		Name:        "qor:redirect_back",
+		After: []string{"qor:session"},
+		Handler: func(chain *route.ChainHandler) {
+			qorctx := qor.ContexFromChain(chain)
+			returnTo := qorctx.SessionManager().Get("return_to")
+			req := qorctx.Request
+			req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
+			qorctx.Request = req
 
-		if !redirectBack.Ignore(req) && returnTo != req.URL.String() {
-			returnTo = req.URL.String()
-			if returnTo[0:1] == "/" {
-				returnTo = qorctx.GetTop().GenURL(returnTo)
+			if !redirectBack.Ignore(req) && returnTo != req.URL.String() {
+				returnTo = qorctx.GenURL(req.URL.String())
+				qorctx.SessionManager().Add("return_to", returnTo)
 			}
-			qorctx.SessionManager().Add("return_to", returnTo)
-		}
-		handler.ServeHTTP(w, req)
-	})
+			chain.Next(req)
+		},
+	}
 }
