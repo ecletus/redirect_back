@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/moisespsena/go-route"
-	"github.com/aghape/aghape/utils"
-	"github.com/aghape/aghape"
+	"github.com/aghape/core/utils"
+	"github.com/aghape/core"
 	_ "github.com/aghape/session/manager"
 )
 
@@ -118,7 +118,7 @@ func (redirectBack *RedirectBack) Middleware() *route.Middleware {
 		Name:        "qor:redirect_back",
 		After: []string{"qor:session"},
 		Handler: func(chain *route.ChainHandler) {
-			qorctx := qor.ContexFromChain(chain)
+			qorctx := core.ContexFromChain(chain)
 			returnTo := qorctx.SessionManager().Get("return_to")
 			req := qorctx.Request
 			req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
