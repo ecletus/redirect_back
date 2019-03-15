@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/moisespsena/go-route"
+	"github.com/moisespsena-go/xroute"
 	"github.com/aghape/core/utils"
 	"github.com/aghape/core"
 	_ "github.com/aghape/session/manager"
@@ -113,22 +113,24 @@ func (redirectBack *RedirectBack) RedirectBack(w http.ResponseWriter, req *http.
 }
 
 // Middleware returns a RedirectBack middleware instance that record return_to path
-func (redirectBack *RedirectBack) Middleware() *route.Middleware {
-	return &route.Middleware{
+func (redirectBack *RedirectBack) Middleware() *xroute.Middleware {
+	return &xroute.Middleware{
 		Name:        "qor:redirect_back",
 		After: []string{"qor:session"},
-		Handler: func(chain *route.ChainHandler) {
+		Handler: func(chain *xroute.ChainHandler) {
 			qorctx := core.ContexFromChain(chain)
-			returnTo := qorctx.SessionManager().Get("return_to")
-			req := qorctx.Request
-			req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
-			qorctx.Request = req
+			if returnTo := qorctx.SessionManager().Get("return_to"); returnTo != "" {
+				req := qorctx.Request
+				req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
+				qorctx.Request = req
 
-			if !redirectBack.Ignore(req) && returnTo != req.URL.String() {
-				returnTo = qorctx.GenURL(req.URL.String())
-				qorctx.SessionManager().Add("return_to", returnTo)
+				if !redirectBack.Ignore(req) && returnTo != req.URL.String() {
+					returnTo = qorctx.GenURL(req.URL.String())
+					qorctx.SessionManager().Add("return_to", returnTo)
+				}
+				chain.SetRequest(req)
 			}
-			chain.Next(req)
+			chain.Pass()
 		},
 	}
 }
