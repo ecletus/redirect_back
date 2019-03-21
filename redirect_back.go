@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/moisespsena-go/xroute"
-	"github.com/aghape/core/utils"
-	"github.com/aghape/core"
-	_ "github.com/aghape/session/manager"
+	"github.com/ecletus/core/utils"
+	"github.com/ecletus/core"
+	_ "github.com/ecletus/session/manager"
 )
 
 var returnToKey utils.ContextKey = "redirect_back_return_to"

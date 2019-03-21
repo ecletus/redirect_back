@@ -10,8 +10,8 @@ package main
 import (
 	"net/http"
 
-	"github.com/aghape/redirect_back"
-	"github.com/aghape/session/manager"
+	"github.com/ecletus/redirect_back"
+	"github.com/ecletus/session/manager"
 )
 
 var RedirectBack = redirect_back.New(&redirect_back.Config{
