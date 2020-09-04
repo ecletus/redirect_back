@@ -2,17 +2,18 @@ package redirect_back
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"strings"
 
-	"github.com/moisespsena-go/xroute"
-	"github.com/ecletus/core/utils"
 	"github.com/ecletus/core"
+	"github.com/ecletus/core/utils"
 	_ "github.com/ecletus/session/manager"
+	"github.com/moisespsena-go/xroute"
 )
+
+const SessionKey = "redirect_to"
 
 var returnToKey utils.ContextKey = "redirect_back_return_to"
 
@@ -94,43 +95,73 @@ func (redirectBack *RedirectBack) compile() {
 }
 
 // RedirectBack redirect back to last visited page
-func (redirectBack *RedirectBack) RedirectBack(w http.ResponseWriter, req *http.Request) {
+func (redirectBack *RedirectBack) RedirectBack(w http.ResponseWriter, req *http.Request, fallback ...string) {
 	returnTo := req.Context().Value(returnToKey)
+	ctx := core.ContextFromRequest(req)
 
 	if returnTo != nil {
-		http.Redirect(w, req, fmt.Sprint(returnTo), http.StatusSeeOther)
+		ctx.SessionManager().Pop(SessionKey)
+		http.Redirect(w, req, returnTo.(string), http.StatusSeeOther)
 		return
 	}
 
 	if referrer := req.Referer(); referrer != "" {
-		if u, _ := url.Parse(referrer); !redirectBack.IgnorePath(u.Path) {
-			http.Redirect(w, req, referrer, http.StatusSeeOther)
-			return
+		if u, _ := url.Parse(referrer); !redirectBack.IgnorePath(u.Path) && u.Path != req.RequestURI {
+			if ctx != nil && !(u.Host == req.Host && u.Path == ctx.OriginalURL.Path) {
+				http.Redirect(w, req, referrer, http.StatusSeeOther)
+				return
+			}
 		}
 	}
 
-	http.Redirect(w, req, redirectBack.config.FallbackPath, http.StatusSeeOther)
+	var fb string
+	for _, fb = range fallback {}
+	if fb == "" {
+		fb = redirectBack.config.FallbackPath
+	}
+	if fb[0] == '/' {
+		fb = ctx.Path(fb)
+	}
+
+	http.Redirect(w, req, fb, http.StatusSeeOther)
 }
 
 // Middleware returns a RedirectBack middleware instance that record return_to path
 func (redirectBack *RedirectBack) Middleware() *xroute.Middleware {
 	return &xroute.Middleware{
-		Name:        "qor:redirect_back",
+		Name:  "qor:redirect_back",
 		After: []string{"qor:session"},
 		Handler: func(chain *xroute.ChainHandler) {
-			qorctx := core.ContexFromChain(chain)
-			if returnTo := qorctx.SessionManager().Get("return_to"); returnTo != "" {
-				req := qorctx.Request
+			ctx := core.ContextFromRequest(chain.Request())
+			if returnTo := ctx.SessionManager().Pop(SessionKey); returnTo != "" {
+				req := ctx.Request
 				req = req.WithContext(context.WithValue(req.Context(), returnToKey, returnTo))
-				qorctx.Request = req
+				ctx.Request = req
 
 				if !redirectBack.Ignore(req) && returnTo != req.URL.String() {
-					returnTo = qorctx.GenURL(req.URL.String())
-					qorctx.SessionManager().Add("return_to", returnTo)
+					returnTo = ctx.Path(req.URL.String())
+					ctx.SessionManager().Add(SessionKey, returnTo)
 				}
 				chain.SetRequest(req)
 			}
 			chain.Pass()
 		},
 	}
+}
+
+func ReturnToUrl(ctx *core.Context) string {
+	if returnTo := ctx.Request.Context().Value(returnToKey); returnTo != nil {
+		return returnTo.(string)
+	}
+	if returnTo := ctx.Request.URL.Query().Get(SessionKey); returnTo != "" {
+		return returnTo
+	}
+	if returnTo := ctx.SessionManager().Get(SessionKey); returnTo != "" {
+		return returnTo
+	}
+	return ""
+}
+
+func Set(ctx *core.Context) error {
+	return ctx.SessionManager().Add(SessionKey, ctx.OriginalURL.String())
 }
